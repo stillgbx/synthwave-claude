@@ -4,6 +4,8 @@
 // behind wireframe mountains, a glowing horizon, and a grid floor rolling toward you.
 // SynthWave '84 is a dark theme, so the scene has one mode.
 // No script, nothing loaded: CSS animations only, stopped under reduced motion.
+// Every style sits in the <style> sheet, none in a style attribute: a surface may draw the
+// scene under a policy that drops style attributes, and the grid's timing lives in them.
 
 const W = 1600
 const H = 1000
@@ -30,7 +32,7 @@ function stars(seed: number): string {
     const x = rnd() * W
     const y = rnd() * rnd() * (HORIZON - 120)
     const r = (0.6 + rnd() * 1.4).toFixed(1)
-    if (rnd() > 0.7) twinkle += `<circle cx="${f(x)}" cy="${f(y)}" r="${r}" style="animation-delay:${(-rnd() * 5).toFixed(1)}s"/>`
+    if (rnd() > 0.7) twinkle += `<circle class="t${Math.floor(rnd() * TWINKLE_STEPS)}" cx="${f(x)}" cy="${f(y)}" r="${r}"/>`
     else still += `<circle cx="${f(x)}" cy="${f(y)}" r="${r}"/>`
   }
   return `<g class="stars">${still}</g><g class="stars twinkle">${twinkle}</g>`
@@ -39,15 +41,15 @@ function stars(seed: number): string {
 /** Two shooting stars, each crossing the sky once in a long while. */
 function shooting(): string {
   return (
-    `<g class="shoot" style="animation-delay:-3s"><line x1="300" y1="90" x2="390" y2="130"/></g>` +
-    `<g class="shoot" style="animation-delay:-13s;animation-duration:23s"><line x1="1180" y1="60" x2="1270" y2="100"/></g>`
+    `<g class="shoot s1"><line x1="300" y1="90" x2="390" y2="130"/></g>` +
+    `<g class="shoot s2"><line x1="1180" y1="60" x2="1270" y2="100"/></g>`
   )
 }
 
 /** The sun: a warm gradient disc, cut by stripes that widen toward the horizon. */
 function sun(): string {
   // In the right margin, where the conversation leaves the scene in view.
-  const x = 1400
+  const x = 1370
   const y = 500
   const r = 185
   let bars = ''
@@ -103,29 +105,38 @@ function mountains(from: number, to: number, peak: number, seed: number, cls: st
 // The floor in perspective. A point of the floor at depth z (in tiles, the camera one tile
 // high) and across offset X lies at y = HORIZON + FOCAL / z and x = VX + FOCAL * X / z. Rays
 // are lines of constant X, rows lines of constant z, both one tile apart, so every cell is
-// a square seen from the camera. Rows roll from Z_FAR to Z_NEAR, one tile per ROLL / ROWS.
+// a square seen from the camera.
+//
+// Each row is drawn at its own depth, so the grid is whole even where nothing animates. In
+// one STEP, every row slides one tile closer, onto the place of the row in front of it, and
+// the loop starts again: the floor seems to roll on forever.
 const FOCAL = 400
 const TILE = 0.5
 const Z_NEAR = 1
 const ROWS = 60
-const Z_FAR = Z_NEAR + ROWS * TILE
-const ROLL = 30
+const STEP = 0.5
 
+const rowDepth = (i: number): number => Z_NEAR + i * TILE
 const rowOffset = (z: number): number => FOCAL / z
 
 /**
- * Keyframes that bring a row from Z_FAR to Z_NEAR at a steady speed. The screen position
- * follows 1/z, so many stops keep the piecewise motion on the curve near the viewer.
+ * One animation per row: from its own depth to one tile closer, at a steady speed in depth.
+ * The screen follows 1/z, so a few stops keep each short slide on the curve.
  */
 function rollKeyframes(): string {
-  const stops = 100
-  let frames = ''
-  for (let i = 0; i <= stops; i++) {
-    const z = Z_FAR - (Z_FAR - Z_NEAR) * (i / stops)
-    const y = rowOffset(z) - rowOffset(Z_FAR)
-    frames += `${i}%{transform:translateY(${y.toFixed(2)}px)}`
+  const stops = 8
+  let css = ''
+  for (let i = 0; i < ROWS; i++) {
+    const z0 = rowDepth(i)
+    let frames = ''
+    for (let s = 0; s <= stops; s++) {
+      const z = z0 - TILE * (s / stops)
+      const y = rowOffset(z) - rowOffset(z0)
+      frames += `${Math.round((s / stops) * 1000) / 10}%{transform:translateY(${y.toFixed(2)}px)}`
+    }
+    css += `@keyframes k${i}{${frames}}.r${i}{animation-name:k${i}}`
   }
-  return `@keyframes roll{${frames}}`
+  return css
 }
 
 /** The floor: rays to the vanishing point and rows rolling toward you, fading at the horizon. */
@@ -136,10 +147,9 @@ function grid(): string {
     rays += `M${VX},${HORIZON} L${f(VX + (FOCAL * i * TILE) / Z_NEAR)},${f(bottom)}`
   }
   let rows = ''
-  const top = HORIZON + rowOffset(Z_FAR)
   for (let i = 0; i < ROWS; i++) {
-    const delay = (-(i * ROLL) / ROWS).toFixed(3)
-    rows += `<rect class="row" x="-600" y="${(top - 1.1).toFixed(1)}" width="${W + 1200}" height="2.2" style="animation-delay:${delay}s"/>`
+    const y = HORIZON + rowOffset(rowDepth(i))
+    rows += `<rect class="row r${i}" x="-600" y="${(y - 1.1).toFixed(1)}" width="${W + 1200}" height="2.2"/>`
   }
   return (
     `<rect x="-600" y="${HORIZON}" width="${W + 1200}" height="${H - HORIZON + 200}" fill="url(#floor)"/>` +
@@ -149,9 +159,19 @@ function grid(): string {
   )
 }
 
+const TWINKLE_STEPS = 10
+
+/** The twinkling stars' delays, one class each, spread over one twinkle. */
+function delays(): string {
+  let css = ''
+  for (let k = 0; k < TWINKLE_STEPS; k++) css += `.twinkle .t${k}{animation-delay:${(-k * 0.5).toFixed(1)}s}`
+  return css
+}
+
 const STYLE =
   `.stars circle{fill:#fff6ff;opacity:.75}.twinkle circle{animation:twinkle 5s ease-in-out infinite}` +
   `.shoot{opacity:0;animation:shoot 17s linear infinite}.shoot line{stroke:#fff;stroke-width:2;stroke-linecap:round}` +
+  `.s1{animation-delay:-3s}.s2{animation-delay:-13s;animation-duration:23s}` +
   `.halo{animation:pulse 6s ease-in-out infinite alternate}` +
   `.rock{fill:#120c1f}.wire{fill:none;stroke-width:1.2;stroke-opacity:.5}` +
   `.edge{fill:none;stroke-width:2.2;stroke-linejoin:round}.edge.halo{stroke-width:10;stroke-opacity:.22}` +
@@ -159,14 +179,14 @@ const STYLE =
   `.far .rock{fill:#1d1233}.far .edge{stroke:#b893ce;stroke-opacity:.6}.far .wire{stroke:#b893ce;stroke-opacity:.2}` +
   `.horizon{fill:#ff7edb}.horizon.halo{opacity:.5}` +
   `.rays{fill:none;stroke:#ff7edb;stroke-width:1.6;stroke-opacity:.55}.rays.halo{stroke-width:7;stroke-opacity:.12}` +
-  `.row{fill:#ff7edb;animation:roll ${ROLL}s linear infinite}` +
+  `.row{fill:#ff7edb;animation-duration:${STEP}s;animation-timing-function:linear;animation-iteration-count:infinite}` +
+  delays() +
   `@keyframes twinkle{0%,100%{opacity:.85}50%{opacity:.15}}` +
   `@keyframes shoot{0%{opacity:0;transform:translate(0,0)}2%{opacity:1}6%{opacity:0;transform:translate(260px,115px)}100%{opacity:0;transform:translate(260px,115px)}}` +
   `@keyframes pulse{from{opacity:.75}to{opacity:1}}` +
   rollKeyframes() +
-  // A narrower box: bring the sun in from the right edge.
-  `@media (max-aspect-ratio:3/2){.sunpos{transform:translateX(-160px)}}` +
-  `@media (max-aspect-ratio:1/1){.sunpos{transform:translateX(-500px)}}` +
+  // No media query on the box's size or shape (aspect-ratio, orientation): the desktop app
+  // stops every animation of a scene that holds one.
   `@media (prefers-reduced-motion:reduce){*{animation-play-state:paused!important}}`
 
 const DEFS =
