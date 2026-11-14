@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1
 
 * The grid rolls again in the desktop app, and the stars twinkle. The desktop app draws still a scene holding a media query, but for reduced motion, so the scenes hold no other: on a window taller than wide, the scene is no longer brought in from the edges.
 * The sun sits in the right margin, over lower mountains, where the conversation no longer hides it.
