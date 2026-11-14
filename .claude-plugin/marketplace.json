@@ -1,0 +1,12 @@
+{
+  "name": "synthwave84",
+  "owner": { "name": "stillgbx" },
+  "description": "SynthWave '84 theme for Claude Desktop.",
+  "plugins": [
+    {
+      "name": "synthwave84",
+      "source": "./",
+      "description": "SynthWave '84 for Claude Desktop: the neon colors of the theme by Robb Owen, over an animated retro grid at sunset."
+    }
+  ]
+}
